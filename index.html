@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transit Map Builder</title>
+  <meta name="description" content="Build geographic and schematic (tube-style) transit maps from OpenStreetMap data and your own drawings." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%231f5eff'/%3E%3Cpath d='M6 20 L14 12 L26 12' stroke='%23fff' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='14' cy='12' r='3.5' fill='%23fff' stroke='%231f5eff' stroke-width='2'/%3E%3C/svg%3E" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <!-- Leaflet-Geoman (drawing tools) -->
+  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ===== Views ===== -->
+  <main id="app">
+    <section id="map-view" class="view" aria-label="Geographic map view">
+      <div id="map"></div>
+    </section>
+
+    <section id="schematic-view" class="view hidden" aria-label="Schematic map view">
+      <div id="schematic"></div>
+      <div id="schematic-tools" class="schematic-tools">
+        <button id="btn-move-stops" class="tool-btn" type="button" title="Move stops" aria-pressed="false" aria-label="Move stops">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path d="M12 3v18M3 12h18M12 3l-2.4 2.6M12 3l2.4 2.6M12 21l-2.4-2.6M12 21l2.4-2.6M3 12l2.6-2.4M3 12l2.6 2.4M21 12l-2.6-2.4M21 12l-2.6 2.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div id="schematic-legend" class="legend hidden"></div>
+      <div id="schematic-empty" class="empty-state hidden">
+        <h2>Nothing to draw yet</h2>
+        <p>Load OSM transit data or draw your own lines and stops in the geographic view.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== Floating control panel ===== -->
+  <aside id="control-panel" class="panel" aria-label="Controls">
+    <header class="panel-header">
+      <h1>Transit Map Builder</h1>
+      <button id="panel-toggle" class="icon-btn" title="Collapse panel" aria-expanded="true">&#x2212;</button>
+    </header>
+
+    <div class="panel-body">
+      <!-- View toggle -->
+      <div class="segmented" role="group" aria-label="View">
+        <button id="btn-view-map" class="seg-btn active" data-view="map" aria-pressed="true">Geographic</button>
+        <button id="btn-view-schematic" class="seg-btn" data-view="schematic" aria-pressed="false">Schematic</button>
+      </div>
+
+      <!-- Map style -->
+      <section class="panel-section">
+        <h2>Map style</h2>
+        <label class="select-row">
+          <span>Basemap</span>
+          <select id="basemap-select" class="select"></select>
+        </label>
+        <p class="hint">“Transport” shows existing tram, metro and bus lines straight from OpenStreetMap.</p>
+      </section>
+
+      <!-- OSM section -->
+      <section class="panel-section">
+        <h2>OpenStreetMap transit</h2>
+        <div class="checkbox-row">
+          <label><input type="checkbox" name="route-type" value="tram" checked /> Tram</label>
+          <label><input type="checkbox" name="route-type" value="subway" checked /> Metro</label>
+          <label><input type="checkbox" name="route-type" value="light_rail" checked /> Light rail</label>
+          <label><input type="checkbox" name="route-type" value="train" /> Train</label>
+          <label><input type="checkbox" name="route-type" value="bus" /> Bus</label>
+        </div>
+        <label class="check-row"><input id="osm-stops-only" type="checkbox" /> Stops only (faster, no lines)</label>
+        <div class="btn-row">
+          <button id="btn-load-osm" class="btn primary">Load OSM Transit</button>
+          <button id="btn-clear-osm" class="btn">Clear</button>
+        </div>
+        <p id="osm-stats" class="stats">No OSM data loaded.</p>
+        <div id="osm-lines" class="line-list hidden"></div>
+        <p class="hint">Zoom to level 12 or closer. Data covers the visible area. “Stops only” skips route lines and is much faster. Routes you edit stay in the list.</p>
+      </section>
+
+      <!-- User data section -->
+      <section class="panel-section">
+        <h2>My drawings</h2>
+        <p id="user-stats" class="stats">0 lines, 0 stops</p>
+        <label class="select-row">
+          <span>Snap drawn lines to</span>
+          <select id="follow-tracks" class="select">
+            <option value="off">Off — free drawing</option>
+            <option value="tram">Tram / rail tracks</option>
+            <option value="bus">Bus routes</option>
+            <option value="all" selected>Any loaded line</option>
+          </select>
+        </label>
+        <div class="btn-row">
+          <button id="btn-export" class="btn">Export to JSON</button>
+          <button id="btn-import" class="btn">Import from JSON</button>
+          <input id="file-import" type="file" accept="application/json,.json" hidden />
+        </div>
+        <div class="btn-row">
+          <button id="btn-clear-user" class="btn danger">Delete all drawings</button>
+        </div>
+        <p class="hint">Draw lines and stops with the toolbar on the left. With snapping on, click a few points along a route and the line follows the real OSM tracks (load that line type first).</p>
+      </section>
+
+      <!-- Schematic section (visible only in schematic view) -->
+      <section id="schematic-controls" class="panel-section hidden">
+        <h2>Schematic layout</h2>
+        <label class="slider-row">
+          <span>Typical spacing: <strong id="spacing-value">70</strong> px</span>
+          <input id="spacing-range" type="range" min="40" max="140" step="5" value="70" />
+        </label>
+        <label class="check-row"><input id="grid-snap" type="checkbox" checked /> Snap to grid</label>
+        <label class="check-row"><input id="show-labels" type="checkbox" checked /> Show stop names</label>
+        <label class="check-row"><input id="show-line-labels" type="checkbox" checked /> Line names &amp; terminals</label>
+        <p class="hint">Move stops with the tool at the top left. Change a line’s color from its swatch in the legend. Re-layout clears moved stops. Click a line to preview it.</p>
+        <div class="btn-row">
+          <button id="btn-relayout" class="btn primary">Re-layout</button>
+          <button id="btn-fit" class="btn">Fit to screen</button>
+          <button id="btn-export-svg" class="btn">Export SVG</button>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- Status toast -->
+  <div id="status" class="status hidden" role="status" aria-live="polite"></div>
+
+  <!-- Libraries (globals: L, d3) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+
+  <!-- App (classic scripts, so the page also works when opened as a local file) -->
+  <script src="storage.js"></script>
+  <script src="api.js"></script>
+  <script src="routing.js"></script>
+  <script src="map.js"></script>
+  <script src="schematic.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
